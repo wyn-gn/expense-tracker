@@ -1,22 +1,3 @@
-import sqlite3
-from tkinter import *
-from tkinter import ttk
-from openpyxl import Workbook  # <-- for Excel export
-
-# Database setup
-conn = sqlite3.connect('expenses.db')
-cursor = conn.cursor()
-cursor.execute('''
-CREATE TABLE IF NOT EXISTS expenses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    category TEXT,
-    amount REAL,
-    date TEXT,
-    description TEXT
-)
-''')
-conn.commit()
-
 # Tkinter setup
 root = Tk()
 root.title("Expense Tracker")
@@ -50,20 +31,18 @@ def add_expense():
         conn = sqlite3.connect('expenses.db')
         cursor = conn.cursor()
         cursor.execute("INSERT INTO expenses (category, amount, date, description) VALUES (?, ?, ?, ?)",
-                       (category, amount, date, desc))
+                        (category, amount, date, desc))
         conn.commit()
         conn.close()
 
-        # Clear fields
         category_entry.delete(0, END)
         amount_entry.delete(0, END)
         date_entry.delete(0, END)
         desc_entry.delete(0, END)
 
-        # Refresh table
         load_expenses()
 
-# Function to load data into the table
+# Function to load data
 def load_expenses():
     for row in tree.get_children():
         tree.delete(row)
@@ -77,7 +56,7 @@ def load_expenses():
     for row in rows:
         tree.insert("", END, values=row)
 
-# Function to export data to Excel
+# Export to Excel
 def export_to_excel():
     conn = sqlite3.connect('expenses.db')
     cursor = conn.cursor()
@@ -89,16 +68,12 @@ def export_to_excel():
     ws = wb.active
     ws.title = "Expenses"
 
-    # Headers
     ws.append(["ID", "Category", "Amount", "Date", "Description"])
-
-    # Data rows
     for row in rows:
         ws.append(row)
 
-    # Save the Excel file
     wb.save("expenses.xlsx")
-    print("Data exported to expenses.xlsx successfully!")
+    messagebox.showinfo("Success", "Data exported to expenses.xlsx!")
 
 # Buttons
 Button(root, text="Add Expense", command=add_expense, bg="#4CAF50", fg="white").grid(row=4, column=0, columnspan=2, pady=10)
@@ -113,7 +88,8 @@ for col in columns:
 
 tree.grid(row=6, column=0, columnspan=2, padx=10, pady=10)
 
-# Load data on startup
 load_expenses()
-
 root.mainloop()
+
+# Start the app with the PIN window
+pin_window.mainloop()
