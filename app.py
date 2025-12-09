@@ -45,7 +45,7 @@ def main_window():
 
     main_win = tk.Toplevel()
     main_win.title("Expense Tracker")
-    center_window(main_win, 600, 350)
+    center_window(main_win, 600, 250)
     main_win.configure(padx=20, pady=20, bg=style.colors.bg)
 
     header = ttk.Label(main_win, text="Expense Tracker", font=("Segoe UI Semibold", 20))
@@ -56,13 +56,11 @@ def main_window():
 
     # Only Daily Expenses opens a new window
     ttk.Button(btn_frame, text="Daily Expenses", bootstyle=PRIMARY, width=20, command=expenses_window).grid(row=0, column=0, padx=15)
-
     # Bills and Debts currently just placeholders (no new window)
     ttk.Button(btn_frame, text="Bills", bootstyle=WARNING, width=20, command=bills_window).grid(row=0, column=1, padx=15)
     ttk.Button(btn_frame, text="Debts", bootstyle=DANGER, width=20, command=debts_window).grid(row=0, column=2, padx=15)
 
     ttk.Button(btn_frame, text="Lock App", bootstyle=OUTLINE + SECONDARY, width=20, command=lock_app).grid(row=1, column=1, padx=15, pady=30)
-
 
 # Expenses Window
 def expenses_window():
@@ -198,6 +196,7 @@ def bills_window():
     main_win.withdraw()
     global bills_win
 
+    # Connect to database
     conn = sqlite3.connect('bills.db')
     cursor = conn.cursor()
     cursor.execute('''
@@ -206,7 +205,8 @@ def bills_window():
             category TEXT,
             amount REAL,
             duedate TEXT,
-            description TEXT
+            description TEXT,
+            status TEXT DEFAULT 'Unpaid'
         )
     ''')
     conn.commit()
@@ -221,13 +221,13 @@ def bills_window():
     # Header Frame
     header_frame = ttk.Frame(bills_win)
     header_frame.pack(fill="x", pady=10, padx=10)
-    header_frame.columnconfigure(0, weight=1)  # make center expand
+    header_frame.columnconfigure(0, weight=1)
 
     ttk.Label(header_frame, text="Bills", font=("Segoe UI Semibold", 16)).grid(row=0, column=0, sticky="nsew")
     ttk.Button(header_frame, text="Back", bootstyle=SECONDARY, command=go_back_to_main_from_bills).grid(row=0, column=1, sticky="e")
 
     # Input Frame
-    input_frame = ttk.LabelFrame(bills_win, text="Add New Expense", padding=20, bootstyle="info")
+    input_frame = ttk.LabelFrame(bills_win, text="Add New Bill", padding=20, bootstyle="info")
     input_frame.pack(fill=X, padx=10, pady=10)
 
     ttk.Label(input_frame, text="Category:").grid(row=0, column=0, padx=10, pady=5, sticky=W)
@@ -250,7 +250,7 @@ def bills_window():
         category = category_entry.get()
         amount = amount_entry.get()
         duedate = date_entry.get()
-        desc = desc_entry.get()  # optional
+        desc = desc_entry.get()
 
         if category and amount and duedate:
             conn = sqlite3.connect('bills.db')
@@ -293,24 +293,40 @@ def bills_window():
         wb = Workbook()
         ws = wb.active
         ws.title = "Bills"
-        ws.append(["ID", "Category", "Amount", "Due Date", "Description"])
+        ws.append(["ID", "Category", "Amount", "Due Date", "Description", "Status"])
         for row in rows:
             ws.append(row)
         wb.save("bills.xlsx")
         messagebox.showinfo("Success", "Data exported to bills.xlsx!")
 
+    def resolve_bill():
+        selected = tree.focus()
+        if not selected:
+            messagebox.showwarning("Error", "Please select a bill to mark as Paid.")
+            return
+        bill_id = tree.item(selected)['values'][0]
+
+        conn = sqlite3.connect('bills.db')
+        cursor = conn.cursor()
+        cursor.execute("UPDATE bills SET status='Paid' WHERE id=?", (bill_id,))
+        conn.commit()
+        conn.close()
+
+        load_bills()
+        messagebox.showinfo("Success", "Bill marked as Paid!")
+
     # Buttons
     btn_frame = ttk.Frame(bills_win)
     btn_frame.pack(pady=10)
-
-    ttk.Button(btn_frame, text="Add Bills", bootstyle=SUCCESS, width=20, command=add_bills).grid(row=0, column=0, padx=10)
+    ttk.Button(btn_frame, text="Add Bill", bootstyle=SUCCESS, width=20, command=add_bills).grid(row=0, column=0, padx=10)
     ttk.Button(btn_frame, text="Export to Excel", bootstyle=INFO, width=20, command=export_to_excel).grid(row=0, column=1, padx=10)
+    ttk.Button(btn_frame, text="Resolve Selected", bootstyle=SUCCESS, width=20, command=resolve_bill).grid(row=0, column=2, padx=10)
 
-    # Table Frame
+    # Table
     table_frame = ttk.LabelFrame(bills_win, text="Bills Records", padding=15, bootstyle="info")
     table_frame.pack(fill=BOTH, expand=True, padx=10, pady=10)
 
-    columns = ("ID", "Category", "Amount", "Due Date", "Description")
+    columns = ("ID", "Category", "Amount", "Due Date", "Description", "Status")
     tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=12, bootstyle=PRIMARY)
     for col in columns:
         tree.heading(col, text=col)
@@ -332,7 +348,8 @@ def debts_window():
             creditor TEXT,
             amount REAL,
             dateborrowed TEXT,
-            description TEXT
+            description TEXT,
+            status TEXT DEFAULT 'Unpaid'
         )
     ''')
     conn.commit()
@@ -344,13 +361,15 @@ def debts_window():
     center_window(debts_win, 900, 600)
     style.theme_use("sandstone")
 
+    # Header
     header_frame = ttk.Frame(debts_win)
     header_frame.pack(fill="x", pady=10, padx=10)
-    header_frame.columnconfigure(0, weight=1)  # make center expand
+    header_frame.columnconfigure(0, weight=1)
 
     ttk.Label(header_frame, text="Debts", font=("Segoe UI Semibold", 16)).grid(row=0, column=0, sticky="nsew")
     ttk.Button(header_frame, text="Back", bootstyle=SECONDARY, command=go_back_to_main_from_debts).grid(row=0, column=1, sticky="e")
-    
+
+    # Input Frame
     input_frame = ttk.LabelFrame(debts_win, text="Add New Debt", padding=20, bootstyle="info")
     input_frame.pack(fill=X, padx=10, pady=10)
 
@@ -369,12 +388,12 @@ def debts_window():
     date_entry.grid(row=1, column=1, padx=10, pady=5)
     desc_entry.grid(row=1, column=3, padx=10, pady=5)
 
-    # FUNCTIONS
+    # Functions
     def add_debts():
         creditor = creditor_entry.get()
         amount = amount_entry.get()
         dateborrowed = date_entry.get()
-        desc = desc_entry.get()  # optional
+        desc = desc_entry.get()
 
         if creditor and amount and dateborrowed:
             conn = sqlite3.connect('debts.db')
@@ -386,7 +405,6 @@ def debts_window():
             conn.commit()
             conn.close()
 
-            # Clear inputs
             creditor_entry.delete(0, tk.END)
             amount_entry.delete(0, tk.END)
             date_entry.delete(0, tk.END)
@@ -395,7 +413,7 @@ def debts_window():
             load_debts()
         else:
             messagebox.showwarning("Input Error", "Please fill in all required fields.")
-    
+
     def load_debts():
         for row in tree.get_children():
             tree.delete(row)
@@ -406,7 +424,7 @@ def debts_window():
         conn.close()
         for row in rows:
             tree.insert("", tk.END, values=row)
-    
+
     def export_to_excel():
         conn = sqlite3.connect('debts.db')
         cursor = conn.cursor()
@@ -417,28 +435,44 @@ def debts_window():
         wb = Workbook()
         ws = wb.active
         ws.title = "Debts"
-        ws.append(["ID", "Creditor", "Amount", "Date Borrowed", "Description"])
+        ws.append(["ID", "Creditor", "Amount", "Date Borrowed", "Description", "Status"])
         for row in rows:
             ws.append(row)
         wb.save("debts.xlsx")
         messagebox.showinfo("Success", "Data exported to debts.xlsx!")
-    
+
+    def resolve_debt():
+        selected = tree.focus()
+        if not selected:
+            messagebox.showwarning("Error", "Please select a debt to mark as Paid.")
+            return
+        debt_id = tree.item(selected)['values'][0]
+
+        conn = sqlite3.connect('debts.db')
+        cursor = conn.cursor()
+        cursor.execute("UPDATE debts SET status='Paid' WHERE id=?", (debt_id,))
+        conn.commit()
+        conn.close()
+
+        load_debts()
+        messagebox.showinfo("Success", "Debt marked as Paid!")
+
     # Buttons
     btn_frame = ttk.Frame(debts_win)
     btn_frame.pack(pady=10)
-
     ttk.Button(btn_frame, text="Add Debt", bootstyle=SUCCESS, width=20, command=add_debts).grid(row=0, column=0, padx=10)
     ttk.Button(btn_frame, text="Export to Excel", bootstyle=INFO, width=20, command=export_to_excel).grid(row=0, column=1, padx=10)
+    ttk.Button(btn_frame, text="Resolve Selected", bootstyle=SUCCESS, width=20, command=resolve_debt).grid(row=0, column=2, padx=10)
 
-    # Table Frame
+    # Table
     table_frame = ttk.LabelFrame(debts_win, text="Debts Records", padding=15, bootstyle="info")
     table_frame.pack(fill=BOTH, expand=True, padx=10, pady=10)
 
-    columns = ("ID", "Creditor", "Amount", "Date Borrowed", "Description")
+    columns = ("ID", "Creditor", "Amount", "Date Borrowed", "Description", "Status")
     tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=12, bootstyle=PRIMARY)
     for col in columns:
         tree.heading(col, text=col)
-        tree.column(col, anchor=tk.CENTER, width=150)
+        tree.column(col, anchor=tk.CENTER, width=140)
     tree.pack(fill=BOTH, expand=True)
 
     load_debts()
@@ -472,4 +506,5 @@ def open_main_window():
 ttk.Button(frame, text="Unlock", bootstyle=INFO, command=open_main_window).pack(fill=X, pady=5)
 ttk.Label(frame, text="Your data is encrypted and secure.", font=("Segoe UI", 8)).pack(pady=(20, 0))
 
+pin_window.bind("<Return>", lambda e: open_main_window())
 pin_window.mainloop()
