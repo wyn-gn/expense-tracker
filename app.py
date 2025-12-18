@@ -6,6 +6,42 @@ from ttkbootstrap import ttk
 from openpyxl import Workbook
 import sqlite3
 
+from cryptography.fernet import Fernet
+import os
+import shutil
+import datetime
+from tkinter import filedialog
+
+import shutil
+import datetime
+import os
+
+def backup_db(db_name):
+    if not os.path.exists("backups"):
+        os.makedirs("backups")
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_file = f"backups/{db_name}_{timestamp}.db"
+    shutil.copy(db_name, backup_file)
+    messagebox.showinfo("Backup", f"Backup created: {backup_file}")
+
+# Encryption key setup
+def generate_key():
+    key = Fernet.generate_key()
+    with open("secret.key", "wb") as key_file:
+        key_file.write(key)
+    return key
+
+def load_key():
+    return open("secret.key", "rb").read()
+
+# Generate key ONLY if it doesn't exist
+if not os.path.exists("secret.key"):
+    key = generate_key()
+else:
+    key = load_key()
+
+cipher = Fernet(key)
+
 # Center window function
 def center_window(win, width, height):
     screen_width = win.winfo_screenwidth()
@@ -76,7 +112,7 @@ def expenses_window():
             category TEXT,
             amount REAL,
             date TEXT,
-            description TEXT
+            description BLOB
         )
     ''')
     conn.commit()
@@ -122,17 +158,21 @@ def expenses_window():
         category = category_entry.get()
         amount = amount_entry.get()
         date = date_entry.get()
-        desc = desc_entry.get()  # optional
+        desc = desc_entry.get()
+        encrypted_desc = cipher.encrypt(desc.encode())  # if using encryption
 
         if category and amount and date:
             conn = sqlite3.connect('expenses.db')
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO expenses (category, amount, date, description) VALUES (?, ?, ?, ?)",
-                (category, amount, date, desc)
+                (category, amount, date, encrypted_desc)  # store encrypted
             )
             conn.commit()
             conn.close()
+
+            # Backup the database automatically
+            backup_db("expenses.db")
 
             # Clear inputs
             category_entry.delete(0, tk.END)
@@ -144,16 +184,31 @@ def expenses_window():
         else:
             messagebox.showwarning("Input Error", "Please fill in all required fields.")
 
+    # LOAD EXPENSES
     def load_expenses():
         for row in tree.get_children():
             tree.delete(row)
+
         conn = sqlite3.connect('expenses.db')
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM expenses ORDER BY id ASC")
         rows = cursor.fetchall()
         conn.close()
+
         for row in rows:
-            tree.insert("", tk.END, values=row)
+            encrypted = row[4]
+
+            # Convert memoryview → bytes
+            if isinstance(encrypted, memoryview):
+                encrypted = encrypted.tobytes()
+
+            # Decrypt safely
+            try:
+                decrypted_desc = cipher.decrypt(encrypted).decode()
+            except Exception:
+                decrypted_desc = encrypted  # fallback if not encrypted
+
+            tree.insert("", tk.END, values=(row[0], row[1], row[2], row[3], decrypted_desc))
 
     def export_to_excel():
         conn = sqlite3.connect('expenses.db')
@@ -166,8 +221,20 @@ def expenses_window():
         ws = wb.active
         ws.title = "Expenses"
         ws.append(["ID", "Category", "Amount", "Date", "Description"])
+
         for row in rows:
-            ws.append(row)
+            # Decrypt the description
+            encrypted_desc = row[4]
+            if isinstance(encrypted_desc, memoryview):  # handle SQLite BLOB
+                encrypted_desc = encrypted_desc.tobytes()
+            try:
+                decrypted_desc = cipher.decrypt(encrypted_desc).decode()
+            except Exception:
+                decrypted_desc = encrypted_desc  # fallback if not encrypted
+
+            # Append row with decrypted description
+            ws.append([row[0], row[1], row[2], row[3], decrypted_desc])
+
         wb.save("expenses.xlsx")
         messagebox.showinfo("Success", "Data exported to expenses.xlsx!")
 
@@ -205,7 +272,7 @@ def bills_window():
             category TEXT,
             amount REAL,
             duedate TEXT,
-            description TEXT,
+            description BLOB,
             status TEXT DEFAULT 'Unpaid'
         )
     ''')
@@ -250,7 +317,7 @@ def bills_window():
         category = category_entry.get()
         amount = amount_entry.get()
         duedate = date_entry.get()
-        desc = desc_entry.get()
+        desc = cipher.encrypt(desc_entry.get().encode())
 
         if category and amount and duedate:
             conn = sqlite3.connect('bills.db')
@@ -262,6 +329,9 @@ def bills_window():
             conn.commit()
             conn.close()
 
+            # Backup the database automatically
+            backup_db("bills.db")
+
             # Clear inputs
             category_entry.delete(0, tk.END)
             amount_entry.delete(0, tk.END)
@@ -272,6 +342,7 @@ def bills_window():
         else:
             messagebox.showwarning("Input Error", "Please fill in all required fields.")
 
+    # LOAD BILLS
     def load_bills():
         for row in tree.get_children():
             tree.delete(row)
@@ -281,7 +352,14 @@ def bills_window():
         rows = cursor.fetchall()
         conn.close()
         for row in rows:
-            tree.insert("", tk.END, values=row)
+            encrypted = row[4]
+            if isinstance(encrypted, memoryview):
+                encrypted = encrypted.tobytes()
+            try:
+                decrypted_desc = cipher.decrypt(encrypted).decode()
+            except Exception:
+                decrypted_desc = encrypted
+            tree.insert("", tk.END, values=(row[0], row[1], row[2], row[3], decrypted_desc, row[5]))
 
     def export_to_excel():
         conn = sqlite3.connect('bills.db')
@@ -294,8 +372,18 @@ def bills_window():
         ws = wb.active
         ws.title = "Bills"
         ws.append(["ID", "Category", "Amount", "Due Date", "Description", "Status"])
+
         for row in rows:
-            ws.append(row)
+            encrypted_desc = row[4]
+            if isinstance(encrypted_desc, memoryview):
+                encrypted_desc = encrypted_desc.tobytes()
+            try:
+                decrypted_desc = cipher.decrypt(encrypted_desc).decode()
+            except Exception:
+                decrypted_desc = encrypted_desc  # fallback if not encrypted
+
+            ws.append([row[0], row[1], row[2], row[3], decrypted_desc, row[5]])
+
         wb.save("bills.xlsx")
         messagebox.showinfo("Success", "Data exported to bills.xlsx!")
 
@@ -348,7 +436,7 @@ def debts_window():
             creditor TEXT,
             amount REAL,
             dateborrowed TEXT,
-            description TEXT,
+            description BLOB,
             status TEXT DEFAULT 'Unpaid'
         )
     ''')
@@ -393,7 +481,7 @@ def debts_window():
         creditor = creditor_entry.get()
         amount = amount_entry.get()
         dateborrowed = date_entry.get()
-        desc = desc_entry.get()
+        desc = cipher.encrypt(desc_entry.get().encode())
 
         if creditor and amount and dateborrowed:
             conn = sqlite3.connect('debts.db')
@@ -405,6 +493,10 @@ def debts_window():
             conn.commit()
             conn.close()
 
+            # Backup the database automatically
+            backup_db("debts.db")
+
+            # Clear inputs
             creditor_entry.delete(0, tk.END)
             amount_entry.delete(0, tk.END)
             date_entry.delete(0, tk.END)
@@ -414,6 +506,7 @@ def debts_window():
         else:
             messagebox.showwarning("Input Error", "Please fill in all required fields.")
 
+    # LOAD DEBTS
     def load_debts():
         for row in tree.get_children():
             tree.delete(row)
@@ -423,7 +516,15 @@ def debts_window():
         rows = cursor.fetchall()
         conn.close()
         for row in rows:
-            tree.insert("", tk.END, values=row)
+            encrypted = row[4]
+            if isinstance(encrypted, memoryview):
+                encrypted = encrypted.tobytes()
+            try:
+                decrypted_desc = cipher.decrypt(encrypted).decode()
+            except Exception:
+                decrypted_desc = encrypted
+            tree.insert("", tk.END, values=(row[0], row[1], row[2], row[3], decrypted_desc, row[5]))
+
 
     def export_to_excel():
         conn = sqlite3.connect('debts.db')
@@ -436,8 +537,18 @@ def debts_window():
         ws = wb.active
         ws.title = "Debts"
         ws.append(["ID", "Creditor", "Amount", "Date Borrowed", "Description", "Status"])
+
         for row in rows:
-            ws.append(row)
+            encrypted_desc = row[4]
+            if isinstance(encrypted_desc, memoryview):
+                encrypted_desc = encrypted_desc.tobytes()
+            try:
+                decrypted_desc = cipher.decrypt(encrypted_desc).decode()
+            except Exception:
+                decrypted_desc = encrypted_desc  # fallback if not encrypted
+
+            ws.append([row[0], row[1], row[2], row[3], decrypted_desc, row[5]])
+
         wb.save("debts.xlsx")
         messagebox.showinfo("Success", "Data exported to debts.xlsx!")
 
