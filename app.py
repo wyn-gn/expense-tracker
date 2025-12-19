@@ -5,44 +5,52 @@ from ttkbootstrap.constants import *
 from ttkbootstrap import ttk
 from openpyxl import Workbook
 import sqlite3
-
 from cryptography.fernet import Fernet
-import os
+from pathlib import Path
 import shutil
 import datetime
-from tkinter import filedialog
+import platform
 
-import shutil
-import datetime
-import os
+# ----------------------------
+# Paths & Directories
+# ----------------------------
+home_dir = Path.home()
+backup_dir = Path("backups")
+backup_dir.mkdir(exist_ok=True)
+key_file = home_dir / ".myfinance_secret.key"  # hidden key in user's home
 
-def backup_db(db_name):
-    if not os.path.exists("backups"):
-        os.makedirs("backups")
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_file = f"backups/{db_name}_{timestamp}.db"
-    shutil.copy(db_name, backup_file)
-    messagebox.showinfo("Backup", f"Backup created: {backup_file}")
-
-# Encryption key setup
+# ----------------------------
+# Encryption Key Setup
+# ----------------------------
 def generate_key():
     key = Fernet.generate_key()
-    with open("secret.key", "wb") as key_file:
-        key_file.write(key)
+    with open(key_file, "wb") as f:
+        f.write(key)
     return key
 
 def load_key():
-    return open("secret.key", "rb").read()
+    return open(key_file, "rb").read()
 
-# Generate key ONLY if it doesn't exist
-if not os.path.exists("secret.key"):
+if not key_file.exists():
     key = generate_key()
 else:
     key = load_key()
 
 cipher = Fernet(key)
 
-# Center window function
+# ----------------------------
+# Backup Function
+# ----------------------------
+def backup_db(db_name):
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    db_path = Path(db_name)
+    backup_file = backup_dir / f"{db_name}_{timestamp}.db"
+    shutil.copy(db_path, backup_file)
+    messagebox.showinfo("Backup", f"Backup created: {backup_file}")
+
+# ----------------------------
+# Center Window Function
+# ----------------------------
 def center_window(win, width, height):
     screen_width = win.winfo_screenwidth()
     screen_height = win.winfo_screenheight()
@@ -50,8 +58,14 @@ def center_window(win, width, height):
     y = (screen_height // 2) - (height // 2)
     win.geometry(f"{width}x{height}+{x}+{y}")
 
+# ----------------------------
+# Fonts (Cross-Platform)
+# ----------------------------
+font_name = "Segoe UI" if platform.system() == "Windows" else "Arial"
 
-# Pin Window (Starting Screen)
+# ----------------------------
+# PIN WINDOW (Starting Screen)
+# ----------------------------
 pin_window = tk.Tk()
 pin_window.title("Secure Access")
 pin_window.geometry("350x300")
@@ -64,46 +78,43 @@ center_window(pin_window, 350, 300)
 frame = ttk.Frame(pin_window, padding=30)
 frame.pack(expand=True)
 
-# PIN screen labels
-ttk.Label(frame, text="Welcome to your", font=("Segoe UI", 11)).pack(pady=(0, 2))
-ttk.Label(frame, text="Personal Financial Tracker", font=("Segoe UI Semibold", 16)).pack(pady=(0, 15))
-ttk.Label(frame, text="Enter your 4-digit PIN", font=("Segoe UI", 10)).pack(pady=(0, 8))
+ttk.Label(frame, text="Welcome to your", font=(font_name, 11)).pack(pady=(0, 2))
+ttk.Label(frame, text="Personal Financial Tracker", font=(font_name, 16, "bold")).pack(pady=(0, 15))
+ttk.Label(frame, text="Enter your 4-digit PIN", font=(font_name, 10)).pack(pady=(0, 8))
 
-# PIN entry field
-pin_entry = ttk.Entry(frame, show="•", font=("Segoe UI", 12), justify="center", width=15)
+pin_entry = ttk.Entry(frame, show="•", font=(font_name, 12), justify="center", width=15)
 pin_entry.pack(ipady=5, pady=(0, 15))
 
-
-# MAIN WINDOW 
+# ----------------------------
+# MAIN WINDOW
+# ----------------------------
 def main_window():
     global main_win
-    pin_window.withdraw()  # hide the PIN window
+    pin_window.withdraw()
 
     main_win = tk.Toplevel()
     main_win.title("Expense Tracker")
     center_window(main_win, 600, 250)
     main_win.configure(padx=20, pady=20, bg=style.colors.bg)
 
-    header = ttk.Label(main_win, text="Expense Tracker", font=("Segoe UI Semibold", 20))
+    header = ttk.Label(main_win, text="Expense Tracker", font=(font_name, 20, "bold"))
     header.pack(anchor="center", pady=(0, 15))
 
     btn_frame = ttk.Frame(main_win)
     btn_frame.pack(pady=10)
 
-    # Only Daily Expenses opens a new window
     ttk.Button(btn_frame, text="Daily Expenses", bootstyle=PRIMARY, width=20, command=expenses_window).grid(row=0, column=0, padx=15)
-    # Bills and Debts currently just placeholders (no new window)
     ttk.Button(btn_frame, text="Bills", bootstyle=WARNING, width=20, command=bills_window).grid(row=0, column=1, padx=15)
     ttk.Button(btn_frame, text="Debts", bootstyle=DANGER, width=20, command=debts_window).grid(row=0, column=2, padx=15)
-
     ttk.Button(btn_frame, text="Lock App", bootstyle=OUTLINE + SECONDARY, width=20, command=lock_app).grid(row=1, column=1, padx=15, pady=30)
 
-# Expenses Window
+# ----------------------------
+# EXPENSES WINDOW
+# ----------------------------
 def expenses_window():
     main_win.withdraw()
     global expenses_win
 
-    # Create or connect to database
     conn = sqlite3.connect('expenses.db')
     cursor = conn.cursor()
     cursor.execute('''
@@ -120,28 +131,23 @@ def expenses_window():
 
     expenses_win = tk.Toplevel()
     expenses_win.title("Daily Expenses")
-    expenses_win.geometry("900x600")
     center_window(expenses_win, 900, 600)
     style.theme_use("sandstone")
 
-    # Header Frame (holds label + back button)
     header_frame = ttk.Frame(expenses_win)
     header_frame.pack(fill="x", pady=10, padx=10)
+    header_frame.columnconfigure(0, weight=1)
 
-    # Column 0 = centered label, Column 1 = back button (aligned right)
-    header_frame.columnconfigure(0, weight=1)  # make center expand
-
-    ttk.Label(header_frame, text="Daily Expenses", font=("Segoe UI Semibold", 16)).grid(row=0, column=0, sticky="nsew")
+    ttk.Label(header_frame, text="Daily Expenses", font=(font_name, 16, "bold")).grid(row=0, column=0, sticky="nsew")
     ttk.Button(header_frame, text="Back", bootstyle=SECONDARY, command=go_back_to_main_from_expenses).grid(row=0, column=1, sticky="e")
 
-    # Input Frame
     input_frame = ttk.LabelFrame(expenses_win, text="Add New Expense", padding=20, bootstyle="info")
     input_frame.pack(fill=X, padx=10, pady=10)
 
-    ttk.Label(input_frame, text="Category:").grid(row=0, column=0, padx=10, pady=5, sticky=W)
-    ttk.Label(input_frame, text="Amount:").grid(row=0, column=2, padx=10, pady=5, sticky=W)
-    ttk.Label(input_frame, text="Date (MM-DD-YYYY):").grid(row=1, column=0, padx=10, pady=5, sticky=W)
-    ttk.Label(input_frame, text="Description:").grid(row=1, column=2, padx=10, pady=5, sticky=W)
+    ttk.Label(input_frame, text="Category:", font=(font_name, 10)).grid(row=0, column=0, padx=10, pady=5, sticky=W)
+    ttk.Label(input_frame, text="Amount:", font=(font_name, 10)).grid(row=0, column=2, padx=10, pady=5, sticky=W)
+    ttk.Label(input_frame, text="Date (MM-DD-YYYY):", font=(font_name, 10)).grid(row=1, column=0, padx=10, pady=5, sticky=W)
+    ttk.Label(input_frame, text="Description:", font=(font_name, 10)).grid(row=1, column=2, padx=10, pady=5, sticky=W)
 
     category_entry = ttk.Entry(input_frame, width=25)
     amount_entry = ttk.Entry(input_frame, width=25)
@@ -153,28 +159,25 @@ def expenses_window():
     date_entry.grid(row=1, column=1, padx=10, pady=5)
     desc_entry.grid(row=1, column=3, padx=10, pady=5)
 
-    # FUNCTIONS
     def add_expense():
         category = category_entry.get()
         amount = amount_entry.get()
         date = date_entry.get()
         desc = desc_entry.get()
-        encrypted_desc = cipher.encrypt(desc.encode())  # if using encryption
+        encrypted_desc = cipher.encrypt(desc.encode())
 
         if category and amount and date:
             conn = sqlite3.connect('expenses.db')
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO expenses (category, amount, date, description) VALUES (?, ?, ?, ?)",
-                (category, amount, date, encrypted_desc)  # store encrypted
+                (category, amount, date, encrypted_desc)
             )
             conn.commit()
             conn.close()
 
-            # Backup the database automatically
             backup_db("expenses.db")
 
-            # Clear inputs
             category_entry.delete(0, tk.END)
             amount_entry.delete(0, tk.END)
             date_entry.delete(0, tk.END)
@@ -184,7 +187,6 @@ def expenses_window():
         else:
             messagebox.showwarning("Input Error", "Please fill in all required fields.")
 
-    # LOAD EXPENSES
     def load_expenses():
         for row in tree.get_children():
             tree.delete(row)
@@ -197,17 +199,12 @@ def expenses_window():
 
         for row in rows:
             encrypted = row[4]
-
-            # Convert memoryview → bytes
             if isinstance(encrypted, memoryview):
                 encrypted = encrypted.tobytes()
-
-            # Decrypt safely
             try:
                 decrypted_desc = cipher.decrypt(encrypted).decode()
             except Exception:
-                decrypted_desc = encrypted  # fallback if not encrypted
-
+                decrypted_desc = encrypted
             tree.insert("", tk.END, values=(row[0], row[1], row[2], row[3], decrypted_desc))
 
     def export_to_excel():
@@ -223,29 +220,24 @@ def expenses_window():
         ws.append(["ID", "Category", "Amount", "Date", "Description"])
 
         for row in rows:
-            # Decrypt the description
             encrypted_desc = row[4]
-            if isinstance(encrypted_desc, memoryview):  # handle SQLite BLOB
+            if isinstance(encrypted_desc, memoryview):
                 encrypted_desc = encrypted_desc.tobytes()
             try:
                 decrypted_desc = cipher.decrypt(encrypted_desc).decode()
             except Exception:
-                decrypted_desc = encrypted_desc  # fallback if not encrypted
-
-            # Append row with decrypted description
+                decrypted_desc = encrypted_desc
             ws.append([row[0], row[1], row[2], row[3], decrypted_desc])
 
-        wb.save("expenses.xlsx")
-        messagebox.showinfo("Success", "Data exported to expenses.xlsx!")
+        excel_file = Path("expenses.xlsx")
+        wb.save(excel_file)
+        messagebox.showinfo("Success", f"Data exported to {excel_file}!")
 
-    # Buttons
     btn_frame = ttk.Frame(expenses_win)
     btn_frame.pack(pady=10)
-
     ttk.Button(btn_frame, text="Add Expense", bootstyle=SUCCESS, width=20, command=add_expense).grid(row=0, column=0, padx=10)
     ttk.Button(btn_frame, text="Export to Excel", bootstyle=INFO, width=20, command=export_to_excel).grid(row=0, column=1, padx=10)
 
-    # Table Frame
     table_frame = ttk.LabelFrame(expenses_win, text="Expense Records", padding=15, bootstyle="info")
     table_frame.pack(fill=BOTH, expand=True, padx=10, pady=10)
 
@@ -258,12 +250,13 @@ def expenses_window():
 
     load_expenses()
 
-# Bills Window
+# ----------------------------
+# BILLS WINDOW
+# ----------------------------
 def bills_window():
     main_win.withdraw()
     global bills_win
 
-    # Connect to database
     conn = sqlite3.connect('bills.db')
     cursor = conn.cursor()
     cursor.execute('''
@@ -281,26 +274,23 @@ def bills_window():
 
     bills_win = tk.Toplevel()
     bills_win.title("Bills")
-    bills_win.geometry("900x600")
     center_window(bills_win, 900, 600)
     style.theme_use("sandstone")
 
-    # Header Frame
     header_frame = ttk.Frame(bills_win)
     header_frame.pack(fill="x", pady=10, padx=10)
     header_frame.columnconfigure(0, weight=1)
 
-    ttk.Label(header_frame, text="Bills", font=("Segoe UI Semibold", 16)).grid(row=0, column=0, sticky="nsew")
+    ttk.Label(header_frame, text="Bills", font=(font_name, 16, "bold")).grid(row=0, column=0, sticky="nsew")
     ttk.Button(header_frame, text="Back", bootstyle=SECONDARY, command=go_back_to_main_from_bills).grid(row=0, column=1, sticky="e")
 
-    # Input Frame
     input_frame = ttk.LabelFrame(bills_win, text="Add New Bill", padding=20, bootstyle="info")
     input_frame.pack(fill=X, padx=10, pady=10)
 
-    ttk.Label(input_frame, text="Category:").grid(row=0, column=0, padx=10, pady=5, sticky=W)
-    ttk.Label(input_frame, text="Amount:").grid(row=0, column=2, padx=10, pady=5, sticky=W)
-    ttk.Label(input_frame, text="Due Date (MM-DD-YYYY):").grid(row=1, column=0, padx=10, pady=5, sticky=W)
-    ttk.Label(input_frame, text="Description:").grid(row=1, column=2, padx=10, pady=5, sticky=W)
+    ttk.Label(input_frame, text="Category:", font=(font_name, 10)).grid(row=0, column=0, padx=10, pady=5, sticky=W)
+    ttk.Label(input_frame, text="Amount:", font=(font_name, 10)).grid(row=0, column=2, padx=10, pady=5, sticky=W)
+    ttk.Label(input_frame, text="Due Date (MM-DD-YYYY):", font=(font_name, 10)).grid(row=1, column=0, padx=10, pady=5, sticky=W)
+    ttk.Label(input_frame, text="Description:", font=(font_name, 10)).grid(row=1, column=2, padx=10, pady=5, sticky=W)
 
     category_entry = ttk.Entry(input_frame, width=25)
     amount_entry = ttk.Entry(input_frame, width=25)
@@ -312,7 +302,6 @@ def bills_window():
     date_entry.grid(row=1, column=1, padx=10, pady=5)
     desc_entry.grid(row=1, column=3, padx=10, pady=5)
 
-    # FUNCTIONS
     def add_bills():
         category = category_entry.get()
         amount = amount_entry.get()
@@ -329,10 +318,8 @@ def bills_window():
             conn.commit()
             conn.close()
 
-            # Backup the database automatically
             backup_db("bills.db")
 
-            # Clear inputs
             category_entry.delete(0, tk.END)
             amount_entry.delete(0, tk.END)
             date_entry.delete(0, tk.END)
@@ -342,7 +329,6 @@ def bills_window():
         else:
             messagebox.showwarning("Input Error", "Please fill in all required fields.")
 
-    # LOAD BILLS
     def load_bills():
         for row in tree.get_children():
             tree.delete(row)
@@ -380,12 +366,12 @@ def bills_window():
             try:
                 decrypted_desc = cipher.decrypt(encrypted_desc).decode()
             except Exception:
-                decrypted_desc = encrypted_desc  # fallback if not encrypted
-
+                decrypted_desc = encrypted_desc
             ws.append([row[0], row[1], row[2], row[3], decrypted_desc, row[5]])
 
-        wb.save("bills.xlsx")
-        messagebox.showinfo("Success", "Data exported to bills.xlsx!")
+        excel_file = Path("bills.xlsx")
+        wb.save(excel_file)
+        messagebox.showinfo("Success", f"Data exported to {excel_file}!")
 
     def resolve_bill():
         selected = tree.focus()
@@ -403,14 +389,12 @@ def bills_window():
         load_bills()
         messagebox.showinfo("Success", "Bill marked as Paid!")
 
-    # Buttons
     btn_frame = ttk.Frame(bills_win)
     btn_frame.pack(pady=10)
     ttk.Button(btn_frame, text="Add Bill", bootstyle=SUCCESS, width=20, command=add_bills).grid(row=0, column=0, padx=10)
     ttk.Button(btn_frame, text="Export to Excel", bootstyle=INFO, width=20, command=export_to_excel).grid(row=0, column=1, padx=10)
     ttk.Button(btn_frame, text="Resolve Selected", bootstyle=SUCCESS, width=20, command=resolve_bill).grid(row=0, column=2, padx=10)
 
-    # Table
     table_frame = ttk.LabelFrame(bills_win, text="Bills Records", padding=15, bootstyle="info")
     table_frame.pack(fill=BOTH, expand=True, padx=10, pady=10)
 
@@ -423,7 +407,9 @@ def bills_window():
 
     load_bills()
 
-#Debts Window
+# ----------------------------
+# DEBTS WINDOW
+# ----------------------------
 def debts_window():
     main_win.withdraw()
     global debts_win
@@ -445,26 +431,23 @@ def debts_window():
 
     debts_win = tk.Toplevel()
     debts_win.title("Debts")
-    debts_win.geometry("900x600")
     center_window(debts_win, 900, 600)
     style.theme_use("sandstone")
 
-    # Header
     header_frame = ttk.Frame(debts_win)
     header_frame.pack(fill="x", pady=10, padx=10)
     header_frame.columnconfigure(0, weight=1)
 
-    ttk.Label(header_frame, text="Debts", font=("Segoe UI Semibold", 16)).grid(row=0, column=0, sticky="nsew")
+    ttk.Label(header_frame, text="Debts", font=(font_name, 16, "bold")).grid(row=0, column=0, sticky="nsew")
     ttk.Button(header_frame, text="Back", bootstyle=SECONDARY, command=go_back_to_main_from_debts).grid(row=0, column=1, sticky="e")
 
-    # Input Frame
     input_frame = ttk.LabelFrame(debts_win, text="Add New Debt", padding=20, bootstyle="info")
     input_frame.pack(fill=X, padx=10, pady=10)
 
-    ttk.Label(input_frame, text="Creditor:").grid(row=0, column=0, padx=10, pady=5, sticky=W)
-    ttk.Label(input_frame, text="Amount:").grid(row=0, column=2, padx=10, pady=5, sticky=W)
-    ttk.Label(input_frame, text="Date Borrowed (MM-DD-YYYY):").grid(row=1, column=0, padx=10, pady=5, sticky=W)
-    ttk.Label(input_frame, text="Description:").grid(row=1, column=2, padx=10, pady=5, sticky=W)
+    ttk.Label(input_frame, text="Creditor:", font=(font_name, 10)).grid(row=0, column=0, padx=10, pady=5, sticky=W)
+    ttk.Label(input_frame, text="Amount:", font=(font_name, 10)).grid(row=0, column=2, padx=10, pady=5, sticky=W)
+    ttk.Label(input_frame, text="Date Borrowed (MM-DD-YYYY):", font=(font_name, 10)).grid(row=1, column=0, padx=10, pady=5, sticky=W)
+    ttk.Label(input_frame, text="Description:", font=(font_name, 10)).grid(row=1, column=2, padx=10, pady=5, sticky=W)
 
     creditor_entry = ttk.Entry(input_frame, width=25)
     amount_entry = ttk.Entry(input_frame, width=25)
@@ -476,7 +459,6 @@ def debts_window():
     date_entry.grid(row=1, column=1, padx=10, pady=5)
     desc_entry.grid(row=1, column=3, padx=10, pady=5)
 
-    # Functions
     def add_debts():
         creditor = creditor_entry.get()
         amount = amount_entry.get()
@@ -493,10 +475,8 @@ def debts_window():
             conn.commit()
             conn.close()
 
-            # Backup the database automatically
             backup_db("debts.db")
 
-            # Clear inputs
             creditor_entry.delete(0, tk.END)
             amount_entry.delete(0, tk.END)
             date_entry.delete(0, tk.END)
@@ -506,7 +486,6 @@ def debts_window():
         else:
             messagebox.showwarning("Input Error", "Please fill in all required fields.")
 
-    # LOAD DEBTS
     def load_debts():
         for row in tree.get_children():
             tree.delete(row)
@@ -524,7 +503,6 @@ def debts_window():
             except Exception:
                 decrypted_desc = encrypted
             tree.insert("", tk.END, values=(row[0], row[1], row[2], row[3], decrypted_desc, row[5]))
-
 
     def export_to_excel():
         conn = sqlite3.connect('debts.db')
@@ -545,12 +523,12 @@ def debts_window():
             try:
                 decrypted_desc = cipher.decrypt(encrypted_desc).decode()
             except Exception:
-                decrypted_desc = encrypted_desc  # fallback if not encrypted
-
+                decrypted_desc = encrypted_desc
             ws.append([row[0], row[1], row[2], row[3], decrypted_desc, row[5]])
 
-        wb.save("debts.xlsx")
-        messagebox.showinfo("Success", "Data exported to debts.xlsx!")
+        excel_file = Path("debts.xlsx")
+        wb.save(excel_file)
+        messagebox.showinfo("Success", f"Data exported to {excel_file}!")
 
     def resolve_debt():
         selected = tree.focus()
@@ -568,14 +546,12 @@ def debts_window():
         load_debts()
         messagebox.showinfo("Success", "Debt marked as Paid!")
 
-    # Buttons
     btn_frame = ttk.Frame(debts_win)
     btn_frame.pack(pady=10)
     ttk.Button(btn_frame, text="Add Debt", bootstyle=SUCCESS, width=20, command=add_debts).grid(row=0, column=0, padx=10)
     ttk.Button(btn_frame, text="Export to Excel", bootstyle=INFO, width=20, command=export_to_excel).grid(row=0, column=1, padx=10)
     ttk.Button(btn_frame, text="Resolve Selected", bootstyle=SUCCESS, width=20, command=resolve_debt).grid(row=0, column=2, padx=10)
 
-    # Table
     table_frame = ttk.LabelFrame(debts_win, text="Debts Records", padding=15, bootstyle="info")
     table_frame.pack(fill=BOTH, expand=True, padx=10, pady=10)
 
@@ -588,6 +564,9 @@ def debts_window():
 
     load_debts()
 
+# ----------------------------
+# NAVIGATION & LOCK
+# ----------------------------
 def go_back_to_main_from_expenses():
     expenses_win.destroy()
     main_win.deiconify()
@@ -600,12 +579,13 @@ def go_back_to_main_from_debts():
     debts_win.destroy()
     main_win.deiconify()
 
-# LOCK APP (Return to PIN)
 def lock_app():
     main_win.destroy()
     pin_window.deiconify()
 
+# ----------------------------
 # PIN VALIDATION
+# ----------------------------
 def open_main_window():
     pin = pin_entry.get()
     if pin == "1234":
@@ -613,9 +593,8 @@ def open_main_window():
     else:
         messagebox.showerror("Error", "Incorrect PIN. Try again.")
 
-# Unlock button
 ttk.Button(frame, text="Unlock", bootstyle=INFO, command=open_main_window).pack(fill=X, pady=5)
-ttk.Label(frame, text="Your data is encrypted and secure.", font=("Segoe UI", 8)).pack(pady=(20, 0))
+ttk.Label(frame, text="Your data is encrypted and secure.", font=(font_name, 8)).pack(pady=(20, 0))
 
 pin_window.bind("<Return>", lambda e: open_main_window())
 pin_window.mainloop()
