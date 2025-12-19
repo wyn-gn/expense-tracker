@@ -1,8 +1,10 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import ttk, messagebox
+
+import ttkbootstrap as tb
 from ttkbootstrap import Style
 from ttkbootstrap.constants import *
-from ttkbootstrap import ttk
+
 from openpyxl import Workbook
 import sqlite3
 from cryptography.fernet import Fernet
@@ -10,6 +12,7 @@ from pathlib import Path
 import shutil
 import datetime
 import platform
+
 
 # ----------------------------
 # Paths & Directories
